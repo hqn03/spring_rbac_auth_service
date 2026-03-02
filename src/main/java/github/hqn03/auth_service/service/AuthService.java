@@ -15,6 +15,11 @@ import github.hqn03.auth_service.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +29,13 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+    private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final PasswordEncoder passwordEncoder;
@@ -65,34 +72,66 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest loginRequest) {
-        User user = userRepository.findByUsernameOrEmail(loginRequest.identifier(), loginRequest.identifier())
-                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
+        try{
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                    loginRequest.identifier(),
+                    loginRequest.password()
+            );
 
-        if(!passwordEncoder.matches(loginRequest.password(), user.getPassword())) {
-            throw new RuntimeException("Invalid password");
+            Authentication authentication = authenticationManager.authenticate(authToken);
+            User user = (User) authentication.getPrincipal();
+
+            if (!user.isEmailVerified()) {
+                throw new RuntimeException("Email not verified");
+            }
+
+            var token = generateToken(user);
+
+            return new LoginResponse(token);
+
+        }catch(BadCredentialsException e){
+            log.error("Authentication failed. {}", e.getMessage());
+            throw new RuntimeException("Invalid username or password");
+        }catch(Exception e){
+            log.error("Login error: {}", e.getMessage());
+            throw new RuntimeException(e.getMessage());
         }
+    }
 
-        if (!user.isEmailVerified()) {
-            throw new RuntimeException("Email not verified");
-        }
-
-        var token = generateToken(user.getUsername());
-
-        return new LoginResponse(token);
-
-    };
-
-    public String generateToken(String username){
+//    @Transactional(readOnly = true)
+//    public LoginResponse login(LoginRequest loginRequest) {
+//        User user = userRepository.findByUsernameOrEmail(loginRequest.identifier(), loginRequest.identifier())
+//                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
+//
+//        if(!passwordEncoder.matches(loginRequest.password(), user.getPassword())) {
+//            throw new RuntimeException("Invalid password");
+//        }
+//
+//        if (!user.isEmailVerified()) {
+//            throw new RuntimeException("Email not verified");
+//        }
+//
+//        var token = generateToken(user);
+//
+//        return new LoginResponse(token);
+//
+//    };
+//
+    public String generateToken(User user){
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS256);
 
+        String scope = user.getAuthorities()
+                .stream()
+                .map(GrantedAuthority::getAuthority).collect(Collectors.joining(" "));
+
         JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
-                .subject(username)
-                .issuer("dev")
+                .subject(user.getUsername())
                 .issueTime(new Date())
                 .expirationTime(new Date(
                         Instant.now().plus(1, ChronoUnit.HOURS).toEpochMilli()
                 ))
-                .claim("customClaim", "Custom")
+
+                .claim("scope", scope)
                 .build();
 
         Payload payload = new Payload(jwtClaimsSet.toJSONObject());
