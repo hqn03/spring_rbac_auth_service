@@ -1,4 +1,4 @@
-package github.hqn03.auth_service.config;
+package github.hqn03.auth_service.secutiry;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
