@@ -1,9 +1,6 @@
 package github.hqn03.auth_service.service;
 
 import com.nimbusds.jose.*;
-import com.nimbusds.jose.crypto.MACSigner;
-import com.nimbusds.jwt.JWT;
-import com.nimbusds.jwt.JWTClaimsSet;
 import github.hqn03.auth_service.dto.auth.LoginRequest;
 import github.hqn03.auth_service.dto.auth.LoginResponse;
 import github.hqn03.auth_service.dto.auth.RegisterRequest;
@@ -21,6 +18,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +39,8 @@ public class AuthService {
     private final UserRepository userRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtEncoder jwtEncoder;
+
 
     @NonFinal
     protected static String SECRET_KEY = "YwMMyYEYNA6CMEl7lWcVQAd5sQ/U2wiDOG4VU+ZU0RQ=";
@@ -88,7 +90,6 @@ public class AuthService {
             var token = generateToken(user);
 
             return new LoginResponse(token);
-
         }catch(BadCredentialsException e){
             log.error("Authentication failed. {}", e.getMessage());
             throw new RuntimeException("Invalid username or password");
@@ -98,53 +99,22 @@ public class AuthService {
         }
     }
 
-//    @Transactional(readOnly = true)
-//    public LoginResponse login(LoginRequest loginRequest) {
-//        User user = userRepository.findByUsernameOrEmail(loginRequest.identifier(), loginRequest.identifier())
-//                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
-//
-//        if(!passwordEncoder.matches(loginRequest.password(), user.getPassword())) {
-//            throw new RuntimeException("Invalid password");
-//        }
-//
-//        if (!user.isEmailVerified()) {
-//            throw new RuntimeException("Email not verified");
-//        }
-//
-//        var token = generateToken(user);
-//
-//        return new LoginResponse(token);
-//
-//    };
-//
-    public String generateToken(User user){
-        JWSHeader header = new JWSHeader(JWSAlgorithm.HS256);
+    private String generateToken(User user) {
+        Instant now = Instant.now();
 
         String scope = user.getAuthorities()
                 .stream()
                 .map(GrantedAuthority::getAuthority).collect(Collectors.joining(" "));
 
-        JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("dev-service")
+                .issuedAt(now)
+                .expiresAt(now.plus(1, ChronoUnit.HOURS))
                 .subject(user.getUsername())
-                .issueTime(new Date())
-                .expirationTime(new Date(
-                        Instant.now().plus(1, ChronoUnit.HOURS).toEpochMilli()
-                ))
-
                 .claim("scope", scope)
                 .build();
 
-        Payload payload = new Payload(jwtClaimsSet.toJSONObject());
-
-        JWSObject jwsObject = new JWSObject(header, payload);
-
-        try {
-            jwsObject.sign(new MACSigner(SECRET_KEY.getBytes()));
-            return jwsObject.serialize();
-        }catch (JOSEException e){
-            log.error("Cannot create jwt token");
-            throw new RuntimeException(e);
-        }
+        return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
     }
 
     public void forgotPassword() {};
