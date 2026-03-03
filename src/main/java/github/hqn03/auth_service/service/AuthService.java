@@ -1,6 +1,5 @@
 package github.hqn03.auth_service.service;
 
-import com.nimbusds.jose.*;
 import github.hqn03.auth_service.dto.auth.LoginRequest;
 import github.hqn03.auth_service.dto.auth.LoginResponse;
 import github.hqn03.auth_service.dto.auth.RegisterRequest;
@@ -27,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
