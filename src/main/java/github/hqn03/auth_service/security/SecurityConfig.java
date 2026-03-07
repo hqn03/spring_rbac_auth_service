@@ -1,4 +1,4 @@
-package github.hqn03.auth_service.secutiry;
+package github.hqn03.auth_service.security;
 
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
